@@ -70,6 +70,43 @@ def test_sampling_is_seeded_and_deterministic() -> None:
     ]
 
 
+def test_mask_answer_removes_method_name_from_question() -> None:
+    rows = _rows()
+    masked = examples_from_rows(rows, level="implementation", seed=0, mask_answer=True)
+    plain = examples_from_rows(rows, level="implementation", seed=0, mask_answer=False)
+    for ex in masked:
+        assert ex.answers[0].lower() not in ex.question.lower()
+        assert "the affected function" in ex.question
+    # masking only touches the question, never the passages
+    by_uid = {ex.uid: ex for ex in plain}
+    for ex in masked:
+        assert [p.text for p in ex.passages] == [p.text for p in by_uid[ex.uid].passages]
+
+
+def test_n_distractors_knob_and_graceful_cap() -> None:
+    rows = _rows()
+    small = examples_from_rows(rows, level="contextual", seed=0, n_distractors=2)
+    assert all(len(ex.passages) == 3 for ex in small)  # gold + 2
+    # only 3 other rows exist, so asking for 25 caps at what is available
+    big = examples_from_rows(rows, level="contextual", seed=0, n_distractors=25)
+    assert all(len(ex.passages) <= 4 for ex in big)
+    assert all(sum(p.is_gold for p in ex.passages) == 1 for ex in big)
+
+
+def test_loader_reads_extra_knobs_from_config() -> None:
+    cfg = DatasetConfig(
+        name="pyresbugs",
+        hub_id=str(FIXTURE),
+        config="implementation",
+        n=4,
+        seed=0,
+        extra={"n_distractors": 2, "mask_answer": True},
+    )
+    examples = load_pyresbugs(cfg)
+    assert all(len(ex.passages) == 3 for ex in examples)
+    assert all(ex.answers[0].lower() not in ex.question.lower() for ex in examples)
+
+
 def test_buggy_file_from_patch() -> None:
     rows = _rows()
     assert buggy_file_from_patch(rows[0]["Diff_patch"]) == "src/acme/config.py"

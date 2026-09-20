@@ -60,6 +60,13 @@ def buggy_file_from_patch(patch: str | None) -> str | None:
     return match.group(1) if match else None
 
 
+def mask_answer_in_text(text: str, name: str) -> str:
+    """Replace mentions of the buggy method's name so the description
+    cannot leak the answer (with or without a trailing call parenthesis)."""
+    pattern = re.compile(re.escape(name) + r"(\(\))?", re.IGNORECASE)
+    return pattern.sub("the affected function", text)
+
+
 def _description(row: dict, level: str) -> str | None:
     field = DESCRIPTION_LEVELS.get(level)
     if field is None:
@@ -89,6 +96,7 @@ def _row_to_example(
     level: str,
     seed: int,
     n_distractors: int,
+    mask_answer: bool,
 ) -> Example:
     uid = _uid(row)
     gold_title = str(row["fixed_method"])
@@ -115,9 +123,12 @@ def _row_to_example(
 
     passages = [gold] + distractors
     rng.shuffle(passages)
+    question = _description(row, level) or ""
+    if mask_answer:
+        question = mask_answer_in_text(question, gold_title)
     return Example(
         uid=uid,
-        question=_description(row, level) or "",
+        question=question,
         answers=[gold_title],
         passages=passages,
     )
@@ -130,6 +141,7 @@ def examples_from_rows(
     n: int | None = None,
     seed: int = 0,
     n_distractors: int = N_DISTRACTORS,
+    mask_answer: bool = False,
 ) -> list[Example]:
     """Build bug-localization examples from PyResBugs-shaped dicts."""
     normed = [_norm_row(r) for r in rows]
@@ -141,7 +153,7 @@ def examples_from_rows(
     examples = []
     for i in order:
         others = usable[:i] + usable[i + 1 :]
-        examples.append(_row_to_example(usable[i], others, level, seed, n_distractors))
+        examples.append(_row_to_example(usable[i], others, level, seed, n_distractors, mask_answer))
     return examples
 
 
@@ -156,4 +168,11 @@ def load_pyresbugs(cfg: DatasetConfig) -> list[Example]:
         ds = load_dataset(source, split=cfg.split, cache_dir=cfg.cache_dir)
         rows = [dict(r) for r in ds]
     level = cfg.config or "contextual"
-    return examples_from_rows(rows, level=level, n=cfg.n, seed=cfg.seed)
+    return examples_from_rows(
+        rows,
+        level=level,
+        n=cfg.n,
+        seed=cfg.seed,
+        n_distractors=int(cfg.extra.get("n_distractors", N_DISTRACTORS)),
+        mask_answer=bool(cfg.extra.get("mask_answer", False)),
+    )
