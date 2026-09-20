@@ -204,3 +204,57 @@ floor it emits no answer at all, while qTTT at the same budget still produces
 one. A matched comparison at small budgets therefore flatters qTTT for a reason
 that has nothing to do with attention. Worth measuring where that floor sits
 before reading too much into any FLOP-matched number, ours or the paper's.
+
+## 2026-09-20 — local sweep: aborted, no signal. What it would actually take.
+
+Ran `configs/experiments/txlog_local.yaml` (Qwen3-1.7B, windows 25/50/95, four
+arms, n=8) on Apple Silicon. Stopped it at 43 of 96 records after it ran ~75%
+over its time estimate. **The result is null and should not be cited.**
+
+Balanced to the 3 examples that completed every cell, mean `tx_joint`:
+
+| window | input tok | chance | in-context | thinking | qTTT |
+|---|---|---|---|---|---|
+| 25 | 1,141 | 33.3% | 33.3% | 0.0% | 33.3% |
+| 50 | 2,085 | 0.0% | 0.0% | 33.3% | 0.0% |
+| 95 | 3,789 | 0.0% | 33.3% | 33.3% | 33.3% |
+
+Every cell is 0/3, 1/3, 2/3 or 3/3, so every number is 0, 33.3, 66.7 or 100.
+The chance arm tying the model at window 25 is the tell. At n=3 this design
+has no resolution: the effect the paper reports (36% → 1%) needs tens of
+examples per cell to separate from a metric whose quantum is 33 points. Nothing
+about the shape or the crossover can be read from this, in either direction.
+
+**Why it overran.** The thinking arm dominates and its cost is not predictable
+from a small probe. Observed generation lengths on the completed examples were
+1,672–6,735 tokens with no clear relation to window size, and one dropped
+partial example ran the full 8,192 at window 50 — by transcribing the
+transaction log back into its own reasoning, line by line, rather than
+reasoning about it. At ~10 tok/s that single example cost ~13 minutes. My
+earlier estimate came from n=4 probes and was too low by roughly 2x; the
+variance, not the mean, is what breaks the budget.
+
+That copying failure is worth noting on its own: "thinking" for a 1.7B model on
+this task partly degenerates into re-emitting the context. It inflates cost
+without adding reasoning, and it is a small-model artifact that would not be
+present at the paper's 4B.
+
+**What did hold up.** The harness ran four arms across three windows against
+real weights with no crashes and no truncation in the balanced set, and qTTT
+verifiably did its work at every window — 32 steps, span 128, loss descending:
+
+| window | TTT loss first → last |
+|---|---|
+| 25 | 0.468 → 0.337 |
+| 50 | 0.381 → 0.233 |
+| 95 | 0.229 → 0.216 |
+
+So the mechanism runs and adapts on real weights. What is missing is
+statistical power, not correctness.
+
+**What this would actually take.** The thinking arm is the whole cost, and it
+is intrinsic to the task at this model size rather than a bug worth fixing.
+Either run in-context vs qTTT vs chance only — which is affordable locally and
+still tests the paper's central contrast — or rent the GPU and run the paper's
+own configuration at n≥50. Shrinking n to fit local compute does not produce a
+weaker version of the result; it produces no result.
