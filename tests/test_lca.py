@@ -100,3 +100,23 @@ def test_titles_only_hides_contents_keeps_truthful_meta() -> None:
             assert p.text.strip()[:40] not in body  # no contents leak
     assert prompt.meta["n_passages"] == len(ex.passages)
     assert prompt.meta["gold_positions"] == [i for i, p in enumerate(ex.passages) if p.is_gold]
+
+
+def test_anonymize_titles_breaks_the_hint_channel() -> None:
+    cfg = DatasetConfig(
+        name="lca_bugloc",
+        hub_id=FIXTURE,
+        split="dev",
+        extra={"repos_dir": REPOS, "anonymize_titles": True},
+    )
+    examples = load_lca_bugloc(cfg)
+    for ex in examples:
+        titles = [p.title for p in ex.passages]
+        assert all(t.startswith("file_") for t in titles)  # no real paths shown
+        assert len(titles) == len(set(titles))
+        golds = [p for p in ex.passages if p.is_gold]
+        assert [p.title for p in golds] == ex.answers  # answer is the gold's label
+        assert "toolbelt" not in " ".join(titles)  # real path never leaks via labels
+    # deterministic: same seed, same labels
+    again = load_lca_bugloc(cfg)
+    assert [ex.answers for ex in examples] == [ex.answers for ex in again]

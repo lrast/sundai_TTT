@@ -114,6 +114,29 @@ def _sibling_files(repo: Path, gold_paths: list[str], budget: int) -> list[str]:
     return out
 
 
+def _stable_seed(uid: str, seed: int) -> int:
+    import hashlib
+
+    return int(hashlib.sha256(f"{seed}|{uid}".encode()).hexdigest()[:8], 16)
+
+
+def _anonymize(passages: list[Passage], uid: str, seed: int) -> tuple[list[Passage], list[str]]:
+    """Replace real paths with neutral labels so issue hints cannot name the answer.
+
+    Labels are assigned by a per-example seeded shuffle, so the gold's label
+    carries no information. Returns the relabeled passages and the gold labels.
+    """
+    import random as _random
+
+    labels = [f"file_{i:02d}.py" for i in range(1, len(passages) + 1)]
+    _random.Random(_stable_seed(uid, seed)).shuffle(labels)
+    out = [
+        Passage(title=label, text=p.text, is_gold=p.is_gold)
+        for label, p in zip(labels, passages, strict=True)
+    ]
+    return out, [p.title for p in out if p.is_gold]
+
+
 def _row_to_example(
     row: dict,
     repos_dir: Path,
@@ -160,6 +183,7 @@ def load_lca_bugloc(cfg: DatasetConfig) -> list[Example]:
         ds = load_dataset(source, cfg.config or "py", split=cfg.split, cache_dir=cfg.cache_dir)
         rows = [dict(r) for r in ds]
     repos_dir = Path(str(cfg.extra.get("repos_dir", ".cache/lca-repos")))
+    anonymize = bool(cfg.extra.get("anonymize_titles", False))
     n_files = int(cfg.extra.get("n_files", N_FILES))
     max_file_chars = int(cfg.extra.get("max_file_chars", MAX_FILE_CHARS))
     max_issue_chars = int(cfg.extra.get("max_issue_chars", MAX_ISSUE_CHARS))
@@ -176,6 +200,9 @@ def load_lca_bugloc(cfg: DatasetConfig) -> list[Example]:
         if ex is None:
             n_skipped += 1
             continue
+        if anonymize:
+            passages, gold_labels = _anonymize(list(ex.passages), ex.uid, cfg.seed)
+            ex = Example(uid=ex.uid, question=ex.question, answers=gold_labels, passages=passages)
         examples.append(ex)
         if cfg.n is not None and len(examples) >= cfg.n:
             break
