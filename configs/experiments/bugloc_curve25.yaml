@@ -1,19 +1,21 @@
+# Context-length curve, 25-passage point. Leak-free: anonymous question
+# (validated no_context = 0.000 in bugloc_anon10), so any accuracy above
+# chance (1/25) is genuine code reading.
 extends: ../base.yaml
 run_id: bugloc_curve25
 system_prompt: >-
-  You are given a bug report and several Python functions, each labeled with its name.
-  Identify which function contains the bug.
-  Reply with the function name only, with no explanation or punctuation beyond the name itself.
+  You are given several Python functions, each labeled with its name.
+  Exactly one of them contains a residual bug.
+  Reply with the name of the buggy function only, with no explanation.
 dataset:
   name: pyresbugs
   hub_id: OSS-forge/PyResBugs
-  config: high
   split: train
   n: 50
   seed: 0
   extra:
+    question_style: anonymous
     n_distractors: 24
-    mask_answer: true
 arrangements:
   - no_context
   - gold_only
@@ -21,6 +23,7 @@ arrangements:
   - gold_last
   - gold_middle
   - shuffled
+metrics: [em, f1, mention]
 models:
   - name: gpt-4o-mini
     kind: api

@@ -1,3 +1,8 @@
+# LEAKAGE BASELINE — do not extend or copy for new experiments.
+# PyResBugs descriptions leak the answer (no_context scores 0.72-0.84 here);
+# these configs exist to reproduce that finding (docs/research-log.md).
+# New experiments start from the leak-free design: question_style: anonymous
+# (bugloc_anon10.yaml / bugloc_twin10.yaml / bugloc_curve*.yaml).
 extends: ../base.yaml
 run_id: bugloc_ctx
 system_prompt: >-
