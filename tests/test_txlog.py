@@ -185,21 +185,39 @@ def test_metrics_are_registered() -> None:
     not os.environ.get("CTXLAB_TOKENIZER"),
     reason="set CTXLAB_TOKENIZER=Qwen/Qwen3-4B to check context-length calibration",
 )
-def test_window_token_counts_match_the_paper() -> None:
-    """The x-axis is only comparable to the paper's Table 2 if the windows land
-    near its token counts. Opt-in because it needs a tokenizer download."""
+def test_rendered_lines_cost_what_the_paper_figure_costs() -> None:
+    """Our line format must be as expensive as the paper's own.
+
+    Note what this does *not* assert. Table 2 puts 25 transactions at 512
+    tokens and 500 at 9,560 -- about 19 tokens per line. But the line format
+    printed in Figure 7 costs 37 tokens under Qwen3's own tokenizer, so
+    Table 2's token axis cannot be produced by the format Figure 7 shows.
+    Rather than reverse-engineer a terser encoding to hit a number, we match
+    the format in the figure and match Figure 1(b)'s x-axis, which is the
+    transaction count. Measured token counts are logged per record in
+    `usage.input_tokens`, so the real axis is always recoverable.
+
+    Opt-in because it needs a tokenizer download.
+    """
     from transformers import AutoTokenizer
 
     from ctxlab.arrangements.filtering import tx_window
 
     tokenizer = AutoTokenizer.from_pretrained(os.environ["CTXLAB_TOKENIZER"])
+    figure_7_line = "[TX001]: Transfer $107: A=4000 \u2192 3893, B=4200 \u2192 4307"
+    reference = len(tokenizer(figure_7_line)["input_ids"])
+
     example = load_txlog(DatasetConfig(name="txlog", n=1, seed=0))[0]
+    ours = len(tokenizer(example.passages[0].text)["input_ids"])
+    assert abs(ours - reference) <= 2, (ours, reference)
+
     counts = {}
     for size in (25, 95, 250, 500):
         window = tx_window(example, random.Random(0), size)
-        body = render_txlog(example.question, window)
-        counts[size] = len(tokenizer(body)["input_ids"])
-    print(f"\ntoken counts by window: {counts}")
+        counts[size] = len(tokenizer(render_txlog(example.question, window))["input_ids"])
+    print(f"\nline={ours} tok (figure 7: {reference}); window token counts: {counts}")
     assert counts[25] < counts[95] < counts[250] < counts[500]
-    assert 300 < counts[25] < 1200
-    assert 6000 < counts[500] < 20000
+    # Per-line density holds across the sweep, so length scales with the
+    # transaction count rather than with anything the generator drifts into.
+    density = [(counts[b] - counts[a]) / (b - a) for a, b in ((25, 95), (95, 250), (250, 500))]
+    assert all(abs(d - reference) <= 4 for d in density), density

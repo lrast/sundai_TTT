@@ -1,0 +1,79 @@
+# The replication: in-context vs thinking vs query-only TTT across context
+# length. Paper Figure 1(b) and Table 2 (Bank Transactions, Qwen3-4B).
+#
+# `ctxlab report runs/txlog_replication` renders this directly: rows are
+# context lengths, columns are the three arms.
+#
+# Compute matching. Appendix D sets T_think = 8192 and (k, N_TTT) = (128, 32),
+# matched through T_think ~= 2 * N_TTT * k (Eq. 3.2): 2 * 32 * 128 = 8192.
+# Change one of the three and the arms are no longer FLOP-matched, which is
+# the comparison the paper's claim rests on.
+#
+# Per GPU tier, change `model` and the `arrangements` list together:
+#   >=30GB  Qwen3-4B, 25/95/250/500  -- comparable to Table 2 numerically
+#   20-30GB Qwen3-4B, same windows, optimizer: sgd (AdamW keeps two fp32
+#           states per query projection; that is ~4.5GB at 4B)
+#   <20GB   Qwen3-1.7B, 25/50/95     -- trend replication only
+#
+# Run the ten-minute txlog_gate.yaml first. If in-context accuracy at
+# tx_window_25 is near zero, the model is too small for the sweep to show a
+# crossover and these hours are wasted.
+extends: ../base.yaml
+run_id: txlog_replication
+system_prompt: >-
+  You are a careful assistant. Use only the provided context.
+  If the answer is not supported, output "unknown".
+dataset:
+  name: txlog
+  n: 100
+  seed: 0
+metrics:
+  - tx_joint
+  - tx_type
+  - tx_id
+arrangements:
+  - tx_window_25
+  - tx_window_95
+  - tx_window_250
+  - tx_window_500
+models:
+  - name: in_context
+    kind: hf_local
+    model: Qwen/Qwen3-4B
+    temperature: 0.7
+    max_tokens: 512
+    extra:
+      enable_thinking: false
+      top_p: 0.8
+      top_k: 20
+      torch_dtype: bfloat16
+
+  - name: thinking
+    kind: hf_local
+    model: Qwen/Qwen3-4B
+    temperature: 0.6
+    max_tokens: 8192
+    extra:
+      enable_thinking: true
+      top_p: 0.95
+      top_k: 20
+      torch_dtype: bfloat16
+
+  # The hyperparameters are in the name on purpose. They are also folded into
+  # the completion cache key, but the name is what makes a stale row obvious
+  # in `records.jsonl` when you come back to a half-finished sweep.
+  - name: qttt_k128_n32_lr1e-5
+    kind: ttt
+    model: Qwen/Qwen3-4B
+    temperature: 0.7
+    max_tokens: 512
+    extra:
+      enable_thinking: false
+      top_p: 0.8
+      top_k: 20
+      torch_dtype: bfloat16
+      k: 128
+      n_ttt: 32
+      lr: 1.0e-5
+      weight_decay: 0.01
+      grad_clip: 1.0

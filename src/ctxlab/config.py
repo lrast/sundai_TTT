@@ -26,7 +26,7 @@ class DatasetConfig(BaseModel):
 
 class ModelConfig(BaseModel):
     name: str
-    kind: Literal["mock", "api", "hf_local"]
+    kind: Literal["mock", "api", "hf_local", "ttt"]
     model: str | None = None
     temperature: float = 0.0
     max_tokens: int = 64
