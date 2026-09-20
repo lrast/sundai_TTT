@@ -107,6 +107,55 @@ def test_loader_reads_extra_knobs_from_config() -> None:
     assert all(ex.answers[0].lower() not in ex.question.lower() for ex in examples)
 
 
+def test_anonymous_question_has_no_description() -> None:
+    from ctxlab.data.pyresbugs import ANONYMOUS_QUESTION
+
+    examples = examples_from_rows(_rows(), question_style="anonymous", seed=0)
+    assert len(examples) == 4
+    for ex in examples:
+        assert ex.question == ANONYMOUS_QUESTION
+        assert ex.answers[0].lower() not in ex.question.lower()
+
+
+def test_same_project_scope_excludes_other_projects() -> None:
+    rows = _rows()
+    by_project = {r["Fixed_Method"]: r["Project"] for r in rows}
+    examples = examples_from_rows(rows, level="contextual", seed=0, distractor_scope="same_project")
+    for ex in examples:
+        gold_project = by_project[ex.answers[0]]
+        for p in ex.passages:
+            if not p.is_gold:
+                assert by_project[p.title] == gold_project
+
+
+def test_include_fixed_gold_builds_labeled_twins() -> None:
+    rows = _rows()
+    faulty = {r["Fixed_Method"]: r["Faulty Code"] for r in rows}
+    fixed = {r["Fixed_Method"]: r["Fault Free Code"] for r in rows}
+    examples = examples_from_rows(rows, question_style="anonymous", seed=0, include_fixed_gold=True)
+    for ex in examples:
+        name = ex.answers[0].split(" [version")[0]
+        versions = [p for p in ex.passages if p.title.startswith(f"{name} [version")]
+        assert len(versions) == 2
+        golds = [p for p in versions if p.is_gold]
+        assert len(golds) == 1
+        assert golds[0].title == ex.answers[0]
+        assert golds[0].text == faulty[name]
+        twin = next(p for p in versions if not p.is_gold)
+        assert twin.text == fixed[name]
+        assert {"[version A]" in p.title for p in versions} == {True, False}
+
+
+def test_mention_metric_scans_whole_reply() -> None:
+    from ctxlab.metrics.bugloc import Mention
+
+    m = Mention()
+    assert m.score("parse_config", ["parse_config"]) == 1.0
+    assert m.score("The bug is in\nparse_config, line 2.", ["parse_config"]) == 1.0
+    assert m.score("render_row", ["parse_config"]) == 0.0
+    assert m.score("", ["parse_config"]) == 0.0
+
+
 def test_buggy_file_from_patch() -> None:
     rows = _rows()
     assert buggy_file_from_patch(rows[0]["Diff_patch"]) == "src/acme/config.py"

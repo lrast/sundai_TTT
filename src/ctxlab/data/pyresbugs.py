@@ -90,6 +90,9 @@ def _stable_seed(root: int, uid: str) -> int:
     return int(hashlib.sha256(f"{root}|{uid}".encode()).hexdigest()[:8], 16)
 
 
+ANONYMOUS_QUESTION = "One of these functions contains a residual bug. Which one?"
+
+
 def _row_to_example(
     row: dict,
     others: list[dict],
@@ -97,20 +100,40 @@ def _row_to_example(
     seed: int,
     n_distractors: int,
     mask_answer: bool,
+    question_style: str,
+    distractor_scope: str,
+    include_fixed_gold: bool,
 ) -> Example:
     uid = _uid(row)
-    gold_title = str(row["fixed_method"])
-    gold = Passage(title=gold_title, text=str(row["faulty_code"]), is_gold=True)
-
+    name = str(row["fixed_method"])
     rng = random.Random(_stable_seed(seed, uid))
+
+    fixed_text = str(row.get("fault_free_code") or "")
+    twin = include_fixed_gold and bool(fixed_text)
+    if twin:
+        # Hard negative: the gold's own fixed version. Both share a name, so
+        # they get version labels and the buggy one is assigned by seed.
+        buggy_label, clean_label = (
+            (f"{name} [version A]", f"{name} [version B]")
+            if rng.random() < 0.5
+            else (f"{name} [version B]", f"{name} [version A]")
+        )
+        gold_title = buggy_label
+        gold = Passage(title=buggy_label, text=str(row["faulty_code"]), is_gold=True)
+        distractors = [Passage(title=clean_label, text=fixed_text, is_gold=False)]
+    else:
+        gold_title = name
+        gold = Passage(title=name, text=str(row["faulty_code"]), is_gold=True)
+        distractors = []
+
     same_project = [o for o in others if o.get("project") == row.get("project")]
     other_project = [o for o in others if o.get("project") != row.get("project")]
     rng.shuffle(same_project)
     rng.shuffle(other_project)
+    pool = same_project if distractor_scope == "same_project" else same_project + other_project
 
-    distractors: list[Passage] = []
-    seen_titles = {gold_title}
-    for candidate in same_project + other_project:
+    seen_titles = {name, gold_title} | {p.title for p in distractors}
+    for candidate in pool:
         if len(distractors) >= n_distractors:
             break
         title = str(candidate.get("fixed_method") or "")
@@ -123,9 +146,12 @@ def _row_to_example(
 
     passages = [gold] + distractors
     rng.shuffle(passages)
-    question = _description(row, level) or ""
-    if mask_answer:
-        question = mask_answer_in_text(question, gold_title)
+    if question_style == "anonymous":
+        question = ANONYMOUS_QUESTION
+    else:
+        question = _description(row, level) or ""
+        if mask_answer:
+            question = mask_answer_in_text(question, name)
     return Example(
         uid=uid,
         question=question,
@@ -142,10 +168,20 @@ def examples_from_rows(
     seed: int = 0,
     n_distractors: int = N_DISTRACTORS,
     mask_answer: bool = False,
+    question_style: str = "description",
+    distractor_scope: str = "any",
+    include_fixed_gold: bool = False,
 ) -> list[Example]:
     """Build bug-localization examples from PyResBugs-shaped dicts."""
     normed = [_norm_row(r) for r in rows]
-    usable = [r for r in normed if _usable(r, level)]
+    need_description = question_style != "anonymous"
+    usable = [
+        r
+        for r in normed
+        if r.get("fixed_method")
+        and r.get("faulty_code")
+        and (not need_description or _description(r, level))
+    ]
     order = list(range(len(usable)))
     random.Random(seed).shuffle(order)
     if n is not None:
@@ -153,7 +189,19 @@ def examples_from_rows(
     examples = []
     for i in order:
         others = usable[:i] + usable[i + 1 :]
-        examples.append(_row_to_example(usable[i], others, level, seed, n_distractors, mask_answer))
+        examples.append(
+            _row_to_example(
+                usable[i],
+                others,
+                level,
+                seed,
+                n_distractors,
+                mask_answer,
+                question_style,
+                distractor_scope,
+                include_fixed_gold,
+            )
+        )
     return examples
 
 
@@ -175,4 +223,7 @@ def load_pyresbugs(cfg: DatasetConfig) -> list[Example]:
         seed=cfg.seed,
         n_distractors=int(cfg.extra.get("n_distractors", N_DISTRACTORS)),
         mask_answer=bool(cfg.extra.get("mask_answer", False)),
+        question_style=str(cfg.extra.get("question_style", "description")),
+        distractor_scope=str(cfg.extra.get("distractor_scope", "any")),
+        include_fixed_gold=bool(cfg.extra.get("include_fixed_gold", False)),
     )

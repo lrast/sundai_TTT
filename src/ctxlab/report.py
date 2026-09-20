@@ -56,6 +56,8 @@ def report(
     if not records:
         console.print(f"[yellow]No records in {run_dir / 'records.jsonl'}[/yellow]")
         return {}
-    console.print(render_table(records, metric="em"))
-    console.print(render_table(records, metric="f1"))
+    seen = {name for rec in records for name in (rec.get("metrics") or {})}
+    first = [m for m in ("em", "f1") if m in seen]
+    for metric in first + sorted(seen - set(first)):
+        console.print(render_table(records, metric=metric))
     return aggregate(records)
