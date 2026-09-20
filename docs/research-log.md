@@ -157,3 +157,30 @@ Two corrections that run forced:
 Follow-up: run `txlog_gate.yaml` before the sweep. If in-context accuracy at
 `tx_window_25` is near zero the model is too small and the crossover cannot
 appear.
+
+## 2026-09-20 — leak-free probes: retrieval is at chance, and the first real position effect
+
+- Hypothesis: with the description leak removed, position and haystack effects
+  become measurable.
+- Config: `configs/experiments/bugloc_anon10.yaml` (anonymous question, 10
+  functions, chance = 0.10) and `bugloc_twin10.yaml` (the gold's fixed version
+  in the haystack as `name [version A/B]`, choice chance = 0.5). n=50,
+  gpt-4o-mini + gpt-5.6-luna.
+- Result, anon10 (mean EM): `no_context` 0.000/0.000 — the leak is closed.
+  All full-haystack arrangements 0.04–0.14 for both models: **unaided
+  residual-bug spotting is at chance**. `gold_only` is 0.86/0.84 — the same
+  ceiling as every description-level run, and here naming the only shown
+  function is free, so the ~14% is answer/refusal loss, not comprehension.
+- Result, twin10 (mean mention; EM under-reads because replies wrap the label):
+  gpt-5.6-luna is flat across positions (0.56–0.62), barely above coin flip.
+  gpt-4o-mini swings 0.44 (gold first) → 0.74 (gold last); on EM the swing is
+  0.04 → 0.68. A large recency bias, the project's first real position effect.
+- What we think it means: the 0.72–0.86 scores of the description-level runs
+  decompose almost entirely into description leakage + parametric memory;
+  genuine code-reading contributes ~nothing at 10 candidates. Position effects
+  exist but only in the near-tie regime, and hit the smaller model first —
+  consistent with the score-dilution margin argument (arXiv 2512.13898,
+  Lemma 2.2): when distractor logits are near-ties, ordering decides.
+- Follow-up: error pass on anon10 wrong answers (hedges vs hallucinated
+  names); twin position sweep at larger n to bound Luna's flatness; the
+  context-length curve now has a live signal to trace in the twin regime.
