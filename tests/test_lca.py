@@ -53,3 +53,32 @@ def test_gold_recall_metric_multi_needle() -> None:
     assert m.score("src/toolbelt/net.py", golds) == 0.5
     assert m.score("net.py: src/toolbelt/net.py and src/toolbelt/table.py", golds) == 1.0
     assert m.score("something else", golds) == 0.0
+
+
+def test_changed_files_python_repr_string() -> None:
+    # The HF dataset serializes changed_files as a Python repr string.
+    import json as _json
+
+    rows = _json.loads(open(FIXTURE).read())
+    for r in rows:
+        r["changed_files"] = repr(r["changed_files"])
+    import tempfile
+    from pathlib import Path as _P
+
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        _json.dump(rows, f)
+        tmp = f.name
+    cfg = DatasetConfig(
+        name="lca_bugloc",
+        hub_id=tmp,
+        split="dev",
+        extra={"repos_dir": REPOS, "max_changed_files": 5},
+    )
+    examples = load_lca_bugloc(cfg)
+    assert {ex.answers[0] for ex in examples} >= {"src/toolbelt/config.py"}
+    multi = [ex for ex in examples if len(ex.answers) == 2]
+    assert multi and sorted(multi[0].answers) == [
+        "src/toolbelt/net.py",
+        "src/toolbelt/table.py",
+    ]
+    _P(tmp).unlink()

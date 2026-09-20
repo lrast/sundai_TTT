@@ -29,6 +29,7 @@ max_issue_chars (default 4000), max_changed_files (default 1: single-needle).
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -55,10 +56,14 @@ def _changed_files(row: dict) -> list[str]:
     if raw is None:
         return []
     if isinstance(raw, str):
+        # The HF dataset stores the list as its Python repr: "['a.py', 'b.py']".
         try:
-            raw = json.loads(raw)
-        except json.JSONDecodeError:
-            raw = [p for p in re.split(r"[\n,]+", raw) if p.strip()]
+            raw = ast.literal_eval(raw)
+        except (ValueError, SyntaxError):
+            try:
+                raw = json.loads(raw)
+            except json.JSONDecodeError:
+                raw = [p.strip(" '\"[]") for p in re.split(r"[\n,]+", raw)]
     return [str(p).strip().strip("'\"") for p in raw if str(p).strip()]
 
 
