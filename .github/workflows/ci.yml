@@ -22,6 +22,4 @@ jobs:
       - name: Tests
         run: uv run pytest
       - name: Smoke
-        run: |
-          uv run ctxlab run -c configs/experiments/smoke.yaml
-          uv run ctxlab report runs/smoke
+        run: make smoke

@@ -73,7 +73,9 @@ def load_plugins() -> None:
     import ctxlab.arrangements.positional  # noqa: F401
     import ctxlab.data.hotpotqa  # noqa: F401
     import ctxlab.data.toy  # noqa: F401
+    import ctxlab.data.txlog  # noqa: F401
     import ctxlab.metrics.qa  # noqa: F401
+    import ctxlab.metrics.txlog  # noqa: F401
     import ctxlab.models.api  # noqa: F401
     import ctxlab.models.hf_local  # noqa: F401
     import ctxlab.models.mock  # noqa: F401
