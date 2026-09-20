@@ -1,0 +1,39 @@
+# Qwen arm of the anonymous bug-localization probe, for whoever has a GPU.
+# Same 50 examples, same arrangements, same seed as bugloc_anon10, so the
+# resulting table is directly comparable column-for-column with the OpenAI
+# models. Decoding settings mirror txlog_gate.yaml. Requires
+# `uv sync --extra local`; roughly ten minutes on an A100.
+extends: ../base.yaml
+run_id: bugloc_anon10_qwen
+system_prompt: >-
+  You are given several Python functions, each labeled with its name.
+  Exactly one of them contains a residual bug.
+  Reply with the name of the buggy function only, with no explanation.
+dataset:
+  name: pyresbugs
+  hub_id: OSS-forge/PyResBugs
+  split: train
+  n: 50
+  seed: 0
+  extra:
+    question_style: anonymous
+    n_distractors: 9
+arrangements:
+  - no_context
+  - gold_only
+  - gold_first
+  - gold_last
+  - gold_middle
+  - shuffled
+metrics: [em, f1, mention]
+models:
+  - name: qwen3-4b
+    kind: hf_local
+    model: Qwen/Qwen3-4B
+    temperature: 0.7
+    max_tokens: 512
+    extra:
+      enable_thinking: false
+      top_p: 0.8
+      top_k: 20
+      torch_dtype: bfloat16
