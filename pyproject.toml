@@ -45,6 +45,7 @@ build-backend = "hatchling.build"
 packages = ["src/ctxlab"]
 
 [tool.ruff]
+extend-exclude = ["tests/fixtures"]
 line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
