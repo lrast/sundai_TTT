@@ -22,6 +22,7 @@ class DatasetConfig(BaseModel):
     seed: int = 0
     cache_dir: str = ".cache/hf"
     hub_id: str | None = None
+    extra: dict[str, Any] = Field(default_factory=dict)
 
 
 class ModelConfig(BaseModel):

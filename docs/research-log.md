@@ -30,6 +30,24 @@ Mean F1 follows the same order, with `gold_only` at 0.852. n=20 is too small
 to claim a lost-in-the-middle effect; the floor/ceiling gap is the takeaway.
 Follow-up: larger n, and a model with a longer context window.
 
+## 2026-09-20 — PyResBugs bug localization: arrangement doesn't move the needle (yet)
+
+- Hypothesis: gold-function position in a 10-function haystack changes localization accuracy.
+- Config: `configs/experiments/bugloc_{impl,ctx,high}.yaml` — PyResBugs, n=50,
+  6 arrangements, gpt-4o-mini + gpt-5.6-luna.
+- Result (mean EM): all position arrangements statistically tied (0.76–0.86, n=50,
+  SE ≈ ±0.06); `no_context` 0.72–0.84; `gold_only` a flat 0.86 ceiling across both
+  models and all three description levels.
+- What we think it means: for these OpenAI models, this open-source bug data produces
+  no variation in retrieval by context arrangement. Candidate explanations:
+  (1) a 10-function context is tiny relative to the model window, so nothing dilutes;
+  (2) public OSS bugs are plausibly in pretraining data — models localize ~75% of bugs
+  with **no code shown**, so descriptions plus parametric memory carry the task;
+  (3) the task as posed is below what these models can do. Practical corollary: repo-QA
+  benchmarks built from public code need a no-context floor reported, or "reading the
+  repo" gets over-credited.
+- Follow-up: `bugloc_curve{10,25,50}` — mask the function name out of the description
+  and grow the haystack, to separate "robust retrieval" from "never had to retrieve".
 ## 2026-09-20 — transaction-log task: generator and window arrangements
 
 No model numbers yet; this entry records design decisions that are hard to
@@ -139,3 +157,30 @@ Two corrections that run forced:
 Follow-up: run `txlog_gate.yaml` before the sweep. If in-context accuracy at
 `tx_window_25` is near zero the model is too small and the crossover cannot
 appear.
+
+## 2026-09-20 — leak-free probes: retrieval is at chance, and the first real position effect
+
+- Hypothesis: with the description leak removed, position and haystack effects
+  become measurable.
+- Config: `configs/experiments/bugloc_anon10.yaml` (anonymous question, 10
+  functions, chance = 0.10) and `bugloc_twin10.yaml` (the gold's fixed version
+  in the haystack as `name [version A/B]`, choice chance = 0.5). n=50,
+  gpt-4o-mini + gpt-5.6-luna.
+- Result, anon10 (mean EM): `no_context` 0.000/0.000 — the leak is closed.
+  All full-haystack arrangements 0.04–0.14 for both models: **unaided
+  residual-bug spotting is at chance**. `gold_only` is 0.86/0.84 — the same
+  ceiling as every description-level run, and here naming the only shown
+  function is free, so the ~14% is answer/refusal loss, not comprehension.
+- Result, twin10 (mean mention; EM under-reads because replies wrap the label):
+  gpt-5.6-luna is flat across positions (0.56–0.62), barely above coin flip.
+  gpt-4o-mini swings 0.44 (gold first) → 0.74 (gold last); on EM the swing is
+  0.04 → 0.68. A large recency bias, the project's first real position effect.
+- What we think it means: the 0.72–0.86 scores of the description-level runs
+  decompose almost entirely into description leakage + parametric memory;
+  genuine code-reading contributes ~nothing at 10 candidates. Position effects
+  exist but only in the near-tie regime, and hit the smaller model first —
+  consistent with the score-dilution margin argument (arXiv 2512.13898,
+  Lemma 2.2): when distractor logits are near-ties, ordering decides.
+- Follow-up: error pass on anon10 wrong answers (hedges vs hallucinated
+  names); twin position sweep at larger n to bound Luna's flatness; the
+  context-length curve now has a live signal to trace in the twin regime.

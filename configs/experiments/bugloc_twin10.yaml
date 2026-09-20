@@ -1,0 +1,37 @@
+extends: ../base.yaml
+run_id: bugloc_twin10
+system_prompt: >-
+  You are given several Python functions, each labeled with its name.
+  Exactly one of them contains a residual bug. Two functions are versions of the
+  same method; only one version is buggy.
+  Reply with the exact label of the buggy function, including its version letter,
+  for example: parse_config [version A]. No explanation.
+dataset:
+  name: pyresbugs
+  hub_id: OSS-forge/PyResBugs
+  split: train
+  n: 50
+  seed: 0
+  extra:
+    question_style: anonymous
+    n_distractors: 9
+    include_fixed_gold: true
+arrangements:
+  - gold_first
+  - gold_middle
+  - gold_last
+  - shuffled
+metrics: [em, f1, mention]
+models:
+  - name: gpt-4o-mini
+    kind: api
+    model: gpt-4o-mini
+    temperature: 0.0
+    max_tokens: 24
+  - name: gpt-5.6-luna
+    kind: api
+    model: gpt-5.6-luna
+    temperature: 0.0
+    max_tokens: 2048
+    extra:
+      drop_params: true

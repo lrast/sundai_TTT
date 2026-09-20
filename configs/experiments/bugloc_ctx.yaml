@@ -1,0 +1,38 @@
+# LEAKAGE BASELINE — do not extend or copy for new experiments.
+# PyResBugs descriptions leak the answer (no_context scores 0.72-0.84 here);
+# these configs exist to reproduce that finding (docs/research-log.md).
+# New experiments start from the leak-free design: question_style: anonymous
+# (bugloc_anon10.yaml / bugloc_twin10.yaml / bugloc_curve*.yaml).
+extends: ../base.yaml
+run_id: bugloc_ctx
+system_prompt: >-
+  You are given a bug report and several Python functions, each labeled with its name.
+  Identify which function contains the bug.
+  Reply with the function name only, with no explanation or punctuation beyond the name itself.
+dataset:
+  name: pyresbugs
+  hub_id: OSS-forge/PyResBugs
+  config: contextual
+  split: train
+  n: 50
+  seed: 0
+arrangements:
+  - no_context
+  - gold_only
+  - gold_first
+  - gold_last
+  - gold_middle
+  - shuffled
+models:
+  - name: gpt-4o-mini
+    kind: api
+    model: gpt-4o-mini
+    temperature: 0.0
+    max_tokens: 24
+  - name: gpt-5.6-luna
+    kind: api
+    model: gpt-5.6-luna
+    temperature: 0.0
+    max_tokens: 2048
+    extra:
+      drop_params: true
