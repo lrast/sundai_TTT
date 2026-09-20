@@ -11,7 +11,7 @@ from typing import Any
 
 from ctxlab.config import ModelConfig
 from ctxlab.data.base import Completion, Prompt
-from ctxlab.models.decoding import apply_chat, extract_answer
+from ctxlab.models.decoding import apply_chat, extract_answer, tail
 from ctxlab.registry import register_model
 
 
@@ -87,7 +87,7 @@ class HuggingFaceLocalModel:
                 "n_new_tokens": n_new,
                 "enable_thinking": self.enable_thinking,
                 # Kept so a zero score can be told apart from a parse failure.
-                "raw_text": raw_text,
+                "raw_text": tail(raw_text),
                 "truncated": n_new >= max_tokens,
             },
             usage={"input_tokens": int(encoded["input_ids"].shape[-1]), "output_tokens": n_new},

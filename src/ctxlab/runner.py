@@ -88,6 +88,12 @@ def run_experiment(cfg: ExperimentConfig) -> Path:
                             "model": model.name,
                             "prompt": prompt.to_record(),
                             "completion": completion.text,
+                            # Backend diagnostics: the untruncated generation,
+                            # and for the TTT arm the steps actually run and
+                            # the loss trajectory. Without these a zero score
+                            # cannot be told apart from an adapter that never
+                            # ran or an answer that failed to parse.
+                            "raw": completion.raw,
                             "usage": completion.usage,
                             "metrics": scores,
                             "cached": cached,

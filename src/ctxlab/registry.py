@@ -79,3 +79,4 @@ def load_plugins() -> None:
     import ctxlab.models.api  # noqa: F401
     import ctxlab.models.hf_local  # noqa: F401
     import ctxlab.models.mock  # noqa: F401
+    import ctxlab.ttt.qttt  # noqa: F401

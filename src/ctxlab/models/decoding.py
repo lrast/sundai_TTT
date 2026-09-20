@@ -53,6 +53,19 @@ def apply_chat(
         ) from exc
 
 
+def tail(text: str, limit: int = 2000) -> str:
+    """Keep the end of a long generation, for the record.
+
+    A thinking run can emit thousands of tokens per example, which would bloat
+    `records.jsonl` past the point of being useful. The tail is the part worth
+    keeping: it is where `Final:` lives, so it is what distinguishes a genuine
+    wrong answer from an extraction failure.
+    """
+    if len(text) <= limit:
+        return text
+    return f"...[{len(text) - limit} chars elided]..." + text[-limit:]
+
+
 def strip_fences(text: str) -> str:
     text = text.strip()
     for fence in _FENCES:
