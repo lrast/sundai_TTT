@@ -97,3 +97,106 @@ def test_registry_has_first_sweep(name: str) -> None:
     from ctxlab.registry import ARRANGEMENTS
 
     assert name in ARRANGEMENTS
+
+
+# --- transaction-log windows --------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def txlog_example() -> Example:
+    from ctxlab.config import DatasetConfig
+    from ctxlab.data.txlog import load_txlog
+
+    return load_txlog(DatasetConfig(name="txlog", n=1, seed=0))[0]
+
+
+@pytest.mark.parametrize("size", [25, 50, 95, 175, 250, 500])
+def test_tx_window_keeps_exactly_size_lines(txlog_example: Example, size: int) -> None:
+    from ctxlab.registry import get_arrangement
+
+    prompt = get_arrangement(f"tx_window_{size}").build(txlog_example, random.Random(0))
+    assert prompt.meta["n_passages"] == size
+
+
+@pytest.mark.parametrize("size", [25, 50, 95, 175, 250, 500])
+@pytest.mark.parametrize("seed", [0, 1, 2, 3])
+def test_tx_window_always_keeps_every_gold_line(
+    txlog_example: Example, size: int, seed: int
+) -> None:
+    """The needle must stay in view at every length, or the sweep measures
+    retrievability rather than the effect of context length."""
+    from ctxlab.registry import get_arrangement
+
+    prompt = get_arrangement(f"tx_window_{size}").build(txlog_example, random.Random(seed))
+    n_gold = sum(1 for p in txlog_example.passages if p.is_gold)
+    assert prompt.meta["n_gold"] == n_gold
+    assert len(prompt.meta["gold_positions"]) == n_gold
+
+
+@pytest.mark.parametrize("size", [25, 95, 250])
+def test_tx_window_is_contiguous(txlog_example: Example, size: int) -> None:
+    """Non-contiguous samples would break the balance chain and make the log
+    unverifiable."""
+    from ctxlab.arrangements.filtering import tx_window
+
+    window = tx_window(txlog_example, random.Random(3), size)
+    texts = [p.text for p in txlog_example.passages]
+    start = texts.index(window[0].text)
+    assert texts[start : start + size] == [p.text for p in window]
+
+
+def test_tx_window_offset_is_seeded_but_varies(txlog_example: Example) -> None:
+    from ctxlab.arrangements.filtering import tx_window
+
+    a = tx_window(txlog_example, random.Random(7), 95)
+    b = tx_window(txlog_example, random.Random(7), 95)
+    c = tx_window(txlog_example, random.Random(8), 95)
+    assert [p.title for p in a] == [p.title for p in b]
+    assert [p.title for p in a] != [p.title for p in c]
+
+
+def test_tx_window_reports_what_it_dropped(txlog_example: Example) -> None:
+    from ctxlab.registry import get_arrangement
+
+    prompt = get_arrangement("tx_window_25").build(txlog_example, random.Random(0))
+    n_total = len(txlog_example.passages)
+    assert len(prompt.meta["dropped_titles"]) == n_total - 25
+    assert prompt.meta["n_gold_available"] == sum(1 for p in txlog_example.passages if p.is_gold)
+
+
+def test_tx_window_wider_than_the_log_keeps_everything() -> None:
+    import random as _random
+
+    from ctxlab.arrangements.filtering import tx_window
+    from ctxlab.data.base import Passage
+
+    ex = Example(
+        uid="short",
+        question="Q",
+        answers=["A"],
+        passages=[Passage(f"TX{i:03d}", f"line {i}", i == 1) for i in range(5)],
+    )
+    assert len(tx_window(ex, _random.Random(0), 500)) == 5
+
+
+def test_tx_window_rejects_an_example_with_no_gold() -> None:
+    import random as _random
+
+    from ctxlab.arrangements.filtering import tx_window
+    from ctxlab.data.base import Passage
+
+    ex = Example(
+        uid="nogold",
+        question="Q",
+        answers=["A"],
+        passages=[Passage(f"TX{i:03d}", f"line {i}", False) for i in range(50)],
+    )
+    with pytest.raises(ValueError, match="no gold passage"):
+        tx_window(ex, _random.Random(0), 25)
+
+
+@pytest.mark.parametrize("name", ["tx_window_25", "tx_window_95", "tx_window_250", "tx_window_500"])
+def test_registry_has_the_txlog_windows(name: str) -> None:
+    from ctxlab.registry import ARRANGEMENTS
+
+    assert name in ARRANGEMENTS

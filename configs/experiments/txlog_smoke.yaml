@@ -1,0 +1,23 @@
+extends: ../base.yaml
+run_id: txlog_smoke
+system_prompt: >-
+  You are a careful assistant. Use only the provided context.
+  If the answer is not supported, output "unknown".
+dataset:
+  name: txlog
+  n: 4
+  seed: 0
+metrics:
+  - tx_joint
+  - tx_type
+  - tx_id
+arrangements:
+  - tx_window_25
+  - tx_window_95
+  - tx_window_250
+  - tx_window_500
+models:
+  - name: mock
+    kind: mock
+    extra:
+      behavior: txlog_solver
