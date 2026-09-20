@@ -1,0 +1,18 @@
+{
+  "id": "hp-1",
+  "question": "Which city is the capital of France?",
+  "answer": "Paris",
+  "supporting_facts": {
+    "title": ["France", "Paris"],
+    "sent_id": [0, 0]
+  },
+  "context": {
+    "title": ["France", "Paris", "Lyon", "Rome"],
+    "sentences": [
+      ["France is a country in Europe.", "Its capital is Paris."],
+      ["Paris is the capital of France."],
+      ["Lyon is a city in France."],
+      ["Rome is the capital of Italy."]
+    ]
+  }
+}

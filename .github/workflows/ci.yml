@@ -1,0 +1,27 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: uv sync --group dev
+      - name: Lint
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+      - name: Tests
+        run: uv run pytest
+      - name: Smoke
+        run: |
+          uv run ctxlab run -c configs/experiments/smoke.yaml
+          uv run ctxlab report runs/smoke

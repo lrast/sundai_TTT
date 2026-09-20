@@ -1,0 +1,12 @@
+seed: 0
+cache_dir: .cache/completions
+runs_dir: runs
+system_prompt: >-
+  You are a question-answering assistant. Use the provided context if it is present.
+  Reply with the short answer only, with no explanation or punctuation beyond the answer itself.
+wandb:
+  enabled: false
+  project: ctxlab
+metrics:
+  - em
+  - f1

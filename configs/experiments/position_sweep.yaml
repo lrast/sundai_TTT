@@ -1,0 +1,22 @@
+extends: ../base.yaml
+run_id: position_sweep
+dataset:
+  name: hotpotqa
+  config: distractor
+  split: validation
+  n: 20
+  seed: 0
+  hub_id: hotpotqa/hotpot_qa
+arrangements:
+  - no_context
+  - gold_only
+  - gold_first
+  - gold_last
+  - gold_middle
+  - shuffled
+models:
+  - name: gpt-4o-mini
+    kind: api
+    model: gpt-4o-mini
+    temperature: 0.0
+    max_tokens: 32

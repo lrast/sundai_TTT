@@ -1,0 +1,17 @@
+extends: ../base.yaml
+run_id: smoke
+dataset:
+  name: toy
+  n: 4
+arrangements:
+  - no_context
+  - gold_only
+  - gold_first
+  - gold_last
+  - gold_middle
+  - shuffled
+models:
+  - name: mock
+    kind: mock
+    extra:
+      behavior: oracle
