@@ -86,7 +86,7 @@ def test_cache_key_separates_models_that_differ_only_in_weights() -> None:
 
 
 def test_experiment_configs_parse() -> None:
-    for name in ("txlog_smoke", "txlog_gate", "txlog_sweep", "txlog_replication"):
+    for name in ("txlog_smoke", "txlog_gate", "txlog_sweep", "txlog_replication", "txlog_local"):
         cfg = load_config(Path(f"configs/experiments/{name}.yaml"))
         assert cfg.run_id == name
         assert cfg.dataset.name == "txlog"

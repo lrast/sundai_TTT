@@ -1,0 +1,85 @@
+# Local replication on Apple Silicon. No GPU rental.
+#
+# Uses the paper's own inference budget unchanged: T_think = 8192 and
+# (k, N_TTT) = (128, 32), which are FLOP-matched by Eq. 3.2 (2 * 32 * 128 =
+# 8192). Generations stop well under that cap at these window sizes, so the
+# budget costs nothing it does not need.
+#
+# Model: Qwen3-1.7B, chosen by running txlog_gate.yaml. Qwen3-0.6B is floored
+# on tx_joint (0.040); 1.7B scores 0.160 at the shortest window, ~16x chance,
+# which leaves room for a collapse to be visible. Both are far below the
+# paper's Qwen3-4B, so read the shape, never the absolute values.
+#
+# Windows stop at 95. Thinking-token count scales with input length on this
+# task (~1,500 tokens at window 25, ~4,300 at window 95), so window 250 would
+# cost roughly 15 minutes per thinking example on this hardware.
+#
+# Decoding deviates from Appendix D for two arms, deliberately. At n=8,
+# sampling noise is comparable to the effect being measured, so `in_context`
+# and the qTTT arm decode greedily: the contrast between them is then the
+# adaptation alone rather than adaptation plus sampling luck. `thinking` keeps
+# Appendix D's sampling because Qwen3 degenerates into repetition loops under
+# greedy decoding in thinking mode.
+extends: ../base.yaml
+run_id: txlog_local
+system_prompt: >-
+  You are a careful assistant. Use only the provided context.
+  If the answer is not supported, output "unknown".
+dataset:
+  name: txlog
+  n: 8
+  seed: 0
+metrics:
+  - tx_joint
+  - tx_type
+  - tx_id
+arrangements:
+  - tx_window_25
+  - tx_window_50
+  - tx_window_95
+models:
+  # Free, and not optional. Guessing a transaction at random is right 1-in-25
+  # of the time at the shortest window and 1-in-95 at the longest, so some of
+  # any measured decline is the guess getting harder rather than attention
+  # diluting. Without this arm the sweep cannot tell those apart.
+  - name: chance
+    kind: mock
+    extra:
+      behavior: txlog_random
+
+  - name: in_context
+    kind: hf_local
+    model: Qwen/Qwen3-1.7B
+    temperature: 0.0
+    max_tokens: 96
+    extra:
+      enable_thinking: false
+      torch_dtype: bfloat16
+      device: mps
+
+  - name: thinking
+    kind: hf_local
+    model: Qwen/Qwen3-1.7B
+    temperature: 0.6
+    max_tokens: 8192
+    extra:
+      enable_thinking: true
+      top_p: 0.95
+      top_k: 20
+      torch_dtype: bfloat16
+      device: mps
+
+  - name: qttt_k128_n32_lr1e-5
+    kind: ttt
+    model: Qwen/Qwen3-1.7B
+    temperature: 0.0
+    max_tokens: 96
+    extra:
+      enable_thinking: false
+      torch_dtype: bfloat16
+      device: mps
+      k: 128
+      n_ttt: 32
+      lr: 1.0e-5
+      weight_decay: 0.01
+      grad_clip: 1.0
