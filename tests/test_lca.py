@@ -82,3 +82,21 @@ def test_changed_files_python_repr_string() -> None:
         "src/toolbelt/table.py",
     ]
     _P(tmp).unlink()
+
+
+def test_titles_only_hides_contents_keeps_truthful_meta() -> None:
+    import random as _random
+
+    from ctxlab.registry import get_arrangement, load_plugins
+
+    load_plugins()
+    cfg = DatasetConfig(name="lca_bugloc", hub_id=FIXTURE, split="dev", extra={"repos_dir": REPOS})
+    ex = load_lca_bugloc(cfg)[0]
+    prompt = get_arrangement("titles_only").build(ex, _random.Random(0))
+    body = prompt.messages[0].content
+    for p in ex.passages:
+        assert p.title in body  # every path listed
+        if len(p.text.strip()) > 40:
+            assert p.text.strip()[:40] not in body  # no contents leak
+    assert prompt.meta["n_passages"] == len(ex.passages)
+    assert prompt.meta["gold_positions"] == [i for i, p in enumerate(ex.passages) if p.is_gold]

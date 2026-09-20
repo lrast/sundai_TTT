@@ -1,0 +1,36 @@
+extends: ../base.yaml
+run_id: lca_titles50
+system_prompt: >-
+  You are given a GitHub issue and several source files from the repository,
+  each labeled with its path. Identify which file must be changed to fix the
+  issue. Reply with the file path only, with no explanation.
+dataset:
+  name: lca_bugloc
+  hub_id: JetBrains-Research/lca-bug-localization
+  config: py
+  split: dev
+  n: 50
+  seed: 0
+  extra:
+    repos_dir: .cache/lca-repos
+    n_files: 10
+    max_file_chars: 6000
+    max_issue_chars: 4000
+    max_changed_files: 1
+arrangements:
+  - no_context
+  - titles_only
+metrics: [em, f1, mention, gold_recall]
+models:
+  - name: gpt-4o-mini
+    kind: api
+    model: gpt-4o-mini
+    temperature: 0.0
+    max_tokens: 48
+  - name: gpt-5.6-luna
+    kind: api
+    model: gpt-5.6-luna
+    temperature: 0.0
+    max_tokens: 2048
+    extra:
+      drop_params: true
