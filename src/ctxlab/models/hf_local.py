@@ -11,6 +11,7 @@ from typing import Any
 
 from ctxlab.config import ModelConfig
 from ctxlab.data.base import Completion, Prompt
+from ctxlab.models.decoding import apply_chat, extract_answer
 from ctxlab.registry import register_model
 
 
@@ -35,6 +36,13 @@ class HuggingFaceLocalModel:
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
+        # Decoding knobs the paper sets per arm (Appendix D). They ride in
+        # `extra` because ModelConfig has no field for them, and the runner
+        # now folds `extra` into the completion cache key so two arms that
+        # differ only here do not collide in `.cache/`.
+        self.enable_thinking = self.extra.pop("enable_thinking", None)
+        self.top_p = self.extra.pop("top_p", None)
+        self.top_k = self.extra.pop("top_k", None)
         device_map = self.extra.pop("device_map", "auto")
         torch_dtype = self.extra.pop("torch_dtype", None)
         dtype = getattr(torch, torch_dtype) if isinstance(torch_dtype, str) else torch_dtype
@@ -49,28 +57,38 @@ class HuggingFaceLocalModel:
     def generate(self, prompt: Prompt, **kwargs: Any) -> Completion:
         max_tokens = kwargs.get("max_tokens", self.max_tokens)
         temperature = kwargs.get("temperature", self.temperature)
-        messages = prompt.to_chat()
-        if hasattr(self.tokenizer, "apply_chat_template") and self.tokenizer.chat_template:
-            text = self.tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-        else:
-            text = "\n".join(f"{m['role']}: {m['content']}" for m in messages) + "\nassistant:"
+        text = apply_chat(self.tokenizer, prompt.to_chat(), enable_thinking=self.enable_thinking)
         encoded = self.tokenizer(text, return_tensors="pt")
         encoded = {k: v.to(self.model.device) for k, v in encoded.items()}
         do_sample = temperature is not None and temperature > 0
+        sampling: dict[str, Any] = {}
+        if do_sample:
+            sampling["temperature"] = temperature
+            if self.top_p is not None:
+                sampling["top_p"] = self.top_p
+            if self.top_k is not None:
+                sampling["top_k"] = self.top_k
         with self._torch.no_grad():
             out = self.model.generate(
                 **encoded,
                 max_new_tokens=max_tokens,
                 do_sample=do_sample,
-                temperature=temperature if do_sample else None,
                 pad_token_id=self.tokenizer.pad_token_id,
+                **sampling,
             )
         new_tokens = out[0, encoded["input_ids"].shape[-1] :]
-        decoded = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+        raw_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+        answer = extract_answer(raw_text)
+        n_new = int(new_tokens.shape[-1])
         return Completion(
-            text=decoded,
-            raw={"model_id": self.model_id, "n_new_tokens": int(new_tokens.shape[-1])},
-            usage={"output_tokens": int(new_tokens.shape[-1])},
+            text=answer,
+            raw={
+                "model_id": self.model_id,
+                "n_new_tokens": n_new,
+                "enable_thinking": self.enable_thinking,
+                # Kept so a zero score can be told apart from a parse failure.
+                "raw_text": raw_text,
+                "truncated": n_new >= max_tokens,
+            },
+            usage={"input_tokens": int(encoded["input_ids"].shape[-1]), "output_tokens": n_new},
         )

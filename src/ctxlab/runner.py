@@ -26,7 +26,18 @@ def _stable_seed(root: int, *parts: str) -> int:
 
 
 def _gen_params(cfg: ModelConfig) -> dict[str, Any]:
-    return {"temperature": cfg.temperature, "max_tokens": cfg.max_tokens}
+    """Generation parameters, which also form part of the completion cache key.
+
+    `extra` is included because that is where per-arm decoding knobs and
+    test-time-training hyperparameters live; without it two models whose only
+    difference is `top_p` (or a TTT learning rate) would share cached
+    completions. It is omitted when empty so configs that never used `extra`
+    keep the cache keys they already have.
+    """
+    params: dict[str, Any] = {"temperature": cfg.temperature, "max_tokens": cfg.max_tokens}
+    if cfg.extra:
+        params["extra"] = dict(cfg.extra)
+    return params
 
 
 def run_experiment(cfg: ExperimentConfig) -> Path:
