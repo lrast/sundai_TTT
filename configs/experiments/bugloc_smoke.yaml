@@ -1,0 +1,24 @@
+extends: ../base.yaml
+run_id: bugloc_smoke
+system_prompt: >-
+  You are given a bug report and several Python functions, each labeled with its name.
+  Identify which function contains the bug.
+  Reply with the function name only, with no explanation or punctuation beyond the name itself.
+dataset:
+  name: pyresbugs
+  hub_id: tests/fixtures/pyresbugs_tiny.json
+  config: contextual
+  n: 4
+  seed: 0
+arrangements:
+  - no_context
+  - gold_only
+  - gold_first
+  - gold_last
+  - gold_middle
+  - shuffled
+models:
+  - name: mock
+    kind: mock
+    extra:
+      behavior: oracle

@@ -1,0 +1,26 @@
+extends: ../base.yaml
+run_id: bugloc_high
+system_prompt: >-
+  You are given a bug report and several Python functions, each labeled with its name.
+  Identify which function contains the bug.
+  Reply with the function name only, with no explanation or punctuation beyond the name itself.
+dataset:
+  name: pyresbugs
+  hub_id: OSS-forge/PyResBugs
+  config: high
+  split: train
+  n: 50
+  seed: 0
+arrangements:
+  - no_context
+  - gold_only
+  - gold_first
+  - gold_last
+  - gold_middle
+  - shuffled
+models:
+  - name: gpt-4o-mini
+    kind: api
+    model: gpt-4o-mini
+    temperature: 0.0
+    max_tokens: 24
