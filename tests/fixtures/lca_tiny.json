@@ -1,0 +1,38 @@
+[
+  {
+    "repo_owner": "acme",
+    "repo_name": "toolbelt",
+    "base_sha": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+    "issue_title": "Crash on startup when config has no settings section",
+    "issue_body": "Running the CLI against a minimal config file raises AttributeError: 'NoneType' object has no attribute 'get'. Started after upgrading to 2.3. Repro: create an empty JSON config and run any command.",
+    "changed_files": ["src/toolbelt/config.py"],
+    "changed_files_count": 1,
+    "repo_tokens_count": 900,
+    "issue_tokens_count": 60,
+    "repo_stars": 12
+  },
+  {
+    "repo_owner": "acme",
+    "repo_name": "toolbelt",
+    "base_sha": "b2c3d4e5f60718293a4b5c6d7e8f901234567890",
+    "issue_title": "Retry helper returns stale response",
+    "issue_body": "When all retries fail the helper returns the last failed response instead of raising.",
+    "changed_files": ["src/toolbelt/net.py", "src/toolbelt/table.py"],
+    "changed_files_count": 2,
+    "repo_tokens_count": 900,
+    "issue_tokens_count": 30,
+    "repo_stars": 12
+  },
+  {
+    "repo_owner": "ghost",
+    "repo_name": "vanished",
+    "base_sha": "c3d4e5f60718293a4b5c6d7e8f90123456789012",
+    "issue_title": "Broken thing",
+    "issue_body": "It broke.",
+    "changed_files": ["lib/thing.py"],
+    "changed_files_count": 1,
+    "repo_tokens_count": 100,
+    "issue_tokens_count": 5,
+    "repo_stars": 30000
+  }
+]

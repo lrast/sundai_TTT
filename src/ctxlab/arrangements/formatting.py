@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 from collections.abc import Callable
 
 from ctxlab.arrangements.base import DEFAULT_SYSTEM
@@ -12,6 +13,7 @@ from ctxlab.data.txlog import (
     RULES,
     parse_tx_line,
 )
+from ctxlab.registry import register_arrangement
 
 TASK_DESCRIPTION = "Analyze this banking transaction log for bugs."
 ANSWER_FORMAT = (
@@ -115,3 +117,31 @@ def build_txlog_prompt(
 ) -> Prompt:
     """`build_prompt` with Figure 7 markup. Metadata contract is unchanged."""
     return build_prompt(ex, passages, arrangement, system=system, render=render_txlog)
+
+
+@register_arrangement
+class TitlesOnly:
+    """Show every passage's title but no contents.
+
+    Separates label-matching from reading: if accuracy here matches the
+    full-content arrangements, the task is won by matching the question to
+    a title; if it falls to the no_context floor, the contents carry it.
+    `meta` is computed on the full passages first, so gold positions and
+    kept/dropped bookkeeping stay truthful.
+    """
+
+    name = "titles_only"
+
+    def build(self, ex: Example, rng: random.Random) -> Prompt:
+        del rng
+        full = build_prompt(ex, list(ex.passages), self.name)
+        listing = "\n".join(f"[{i}] {p.title}" for i, p in enumerate(ex.passages, start=1))
+        if listing:
+            content = f"Files:\n{listing}\n\nQuestion: {ex.question}\nAnswer:"
+        else:
+            content = f"Question: {ex.question}\nAnswer:"
+        return Prompt(
+            system=full.system,
+            messages=(Message(role="user", content=content),),
+            meta={**full.meta, "titles_only": True},
+        )
