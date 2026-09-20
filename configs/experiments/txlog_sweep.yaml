@@ -1,0 +1,55 @@
+# In-context vs thinking across context length (paper Figure 1b, Table 2).
+#
+# One system prompt covers both arms on purpose. `cfg.system_prompt` is
+# run-wide, but Qwen3 switches reasoning through its chat template rather than
+# through the prompt -- the paper's footnote 2 says they use the /think and
+# /no_think tokens for exactly this. Appendix D's [SCRATCHPAD] template is the
+# fallback for models without a native switch. So the arms here differ only in
+# `enable_thinking`, the decoding parameters and the generation budget, which
+# is the controlled comparison the paper makes.
+#
+# Model id and window set are the two things to change per GPU tier. Qwen3-4B
+# with 25/95/250/500 needs roughly 18GB and is the only configuration
+# comparable to Table 2 numerically; Qwen3-1.7B with 25/50/95 fits a T4 and
+# replicates the trend only.
+extends: ../base.yaml
+run_id: txlog_sweep
+system_prompt: >-
+  You are a careful assistant. Use only the provided context.
+  If the answer is not supported, output "unknown".
+dataset:
+  name: txlog
+  n: 100
+  seed: 0
+metrics:
+  - tx_joint
+  - tx_type
+  - tx_id
+arrangements:
+  - tx_window_25
+  - tx_window_95
+  - tx_window_250
+  - tx_window_500
+models:
+  - name: in_context
+    kind: hf_local
+    model: Qwen/Qwen3-4B
+    temperature: 0.7
+    max_tokens: 512
+    extra:
+      enable_thinking: false
+      top_p: 0.8
+      top_k: 20
+      torch_dtype: bfloat16
+  # T_think = 8192 per Appendix D. qTTT is matched to this budget in PR 3
+  # via T_think ~= 2 * N_TTT * k.
+  - name: thinking
+    kind: hf_local
+    model: Qwen/Qwen3-4B
+    temperature: 0.6
+    max_tokens: 8192
+    extra:
+      enable_thinking: true
+      top_p: 0.95
+      top_k: 20
+      torch_dtype: bfloat16

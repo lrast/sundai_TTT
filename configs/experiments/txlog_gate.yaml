@@ -1,0 +1,36 @@
+# Cheap gate, not a sweep. Roughly ten minutes on a GPU.
+#
+# The paper's result depends on the shortest context sitting well above the
+# accuracy floor: Qwen3-4B scores 36.0% at 512 tokens (Table 2), which is what
+# makes the collapse to 1.0% at 9,560 legible. A model that is already near
+# zero at 25 transactions cannot show a crossover no matter how well qTTT
+# works, so run this before paying for the full sweep.
+#
+# Land in the 20-40% band and the sweep is worth running. Near zero means
+# reach for a larger model first.
+extends: ../base.yaml
+run_id: txlog_gate
+system_prompt: >-
+  You are a careful assistant. Use only the provided context.
+  If the answer is not supported, output "unknown".
+dataset:
+  name: txlog
+  n: 25
+  seed: 0
+metrics:
+  - tx_joint
+  - tx_type
+  - tx_id
+arrangements:
+  - tx_window_25
+models:
+  - name: in_context
+    kind: hf_local
+    model: Qwen/Qwen3-4B
+    temperature: 0.7
+    max_tokens: 512
+    extra:
+      enable_thinking: false
+      top_p: 0.8
+      top_k: 20
+      torch_dtype: bfloat16

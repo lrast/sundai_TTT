@@ -75,7 +75,10 @@ def load_plugins() -> None:
     import ctxlab.data.pyresbugs  # noqa: F401
     import ctxlab.data.toy  # noqa: F401
     import ctxlab.metrics.bugloc  # noqa: F401
+    import ctxlab.data.txlog  # noqa: F401
     import ctxlab.metrics.qa  # noqa: F401
+    import ctxlab.metrics.txlog  # noqa: F401
     import ctxlab.models.api  # noqa: F401
     import ctxlab.models.hf_local  # noqa: F401
     import ctxlab.models.mock  # noqa: F401
+    import ctxlab.ttt.qttt  # noqa: F401

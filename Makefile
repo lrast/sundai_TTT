@@ -1,4 +1,4 @@
-.PHONY: install lint test smoke sweep-small report
+.PHONY: install lint test smoke smoke-qa smoke-txlog sweep-small report
 
 install:
 	uv sync --group dev
@@ -10,9 +10,15 @@ lint:
 test:
 	uv run pytest
 
-smoke:
+smoke: smoke-qa smoke-txlog
+
+smoke-qa:
 	uv run ctxlab run -c configs/experiments/smoke.yaml
 	uv run ctxlab report runs/smoke
+
+smoke-txlog:
+	uv run ctxlab run -c configs/experiments/txlog_smoke.yaml
+	uv run ctxlab report runs/txlog_smoke
 
 sweep-small:
 	uv run ctxlab run -c configs/experiments/position_sweep.yaml

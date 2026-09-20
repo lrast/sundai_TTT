@@ -47,6 +47,15 @@ def render_table(records: list[dict[str, Any]], *, metric: str = "em") -> Table:
     return table
 
 
+def metric_names(records: list[dict[str, Any]]) -> list[str]:
+    """Metrics actually present in the run, rather than an assumed em/f1 pair.
+
+    A run configured with `metrics: [tx_joint, ...]` has no em column, and
+    printing one would show a table of zeros for a metric nobody asked for.
+    """
+    return sorted({name for rec in records for name in (rec.get("metrics") or {})})
+
+
 def report(
     run_dir: Path, *, console: Console | None = None
 ) -> dict[tuple[str, str], dict[str, float]]:
@@ -56,8 +65,6 @@ def report(
     if not records:
         console.print(f"[yellow]No records in {run_dir / 'records.jsonl'}[/yellow]")
         return {}
-    seen = {name for rec in records for name in (rec.get("metrics") or {})}
-    first = [m for m in ("em", "f1") if m in seen]
-    for metric in first + sorted(seen - set(first)):
-        console.print(render_table(records, metric=metric))
+    for name in metric_names(records):
+        console.print(render_table(records, metric=name))
     return aggregate(records)
