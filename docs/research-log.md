@@ -139,3 +139,68 @@ Two corrections that run forced:
 Follow-up: run `txlog_gate.yaml` before the sweep. If in-context accuracy at
 `tx_window_25` is near zero the model is too small and the crossover cannot
 appear.
+
+## 2026-09-20 — local runs, and two cache/memory bugs they exposed
+
+Running the harness against real Qwen3 weights on a laptop, before spending
+anything on a GPU. Two bugs surfaced that would both have corrupted the Colab
+sweep silently.
+
+**The completion cache ignored which model produced the completion.** A
+Qwen3-1.7B gate run returned, to three decimals, the numbers from a Qwen3-0.6B
+run: `tx_id` 0.200, `tx_type` 0.320, `tx_joint` 0.040. Every completion was a
+cache hit. Only the arm's *name* was in the key, and both configs called the
+arm `in_context`, so `ModelConfig.model` — the weights — never entered the
+hash. Nothing in the report table showed it; the recorded `raw.model_id` is
+what gave it away, which is the second time that diagnostic has paid for
+itself. `_gen_params` now covers model id and `extra` with no special cases:
+if it changes the output, it is in the key. This invalidates `.cache/`, which
+is local and gitignored — a stale cache costs a re-run, a wrong one costs a
+wrong result.
+
+Corrected gate numbers, n=25, `tx_window_25`:
+
+| model | tx_id | tx_type | tx_joint |
+|---|---|---|---|
+| Qwen3-0.6B | 0.200 | 0.320 | 0.040 |
+| Qwen3-1.7B | 0.240 | 0.520 | 0.160 |
+
+Qwen3-1.7B clears the gate: 16% joint at the shortest window is ~16x chance,
+with room to fall. 0.6B is floored on the joint metric.
+
+**Three arms meant three copies of the same checkpoint.** The runner builds
+every model in a config up front, so a three-arm sweep over one checkpoint held
+three sets of weights. This OOM'd MPS at 20GB on a 1.7B model in fp32, and
+would have OOM'd an A100 on `txlog_replication.yaml`: 3 x 8GB for Qwen3-4B in
+bf16, before a single activation. Arms sharing a checkpoint now share the
+loaded weights. Safe because arms differ only in decoding parameters; the TTT
+arm mutates query projections but restores them in a `finally`, which
+`test_restore_puts_the_base_weights_back` is there to keep true. An earlier
+note in this log put peak usage at ~21GB — that figure is only correct *with*
+this fix.
+
+**Apple Silicon needs a plain `.to(device)`.** `device_map="mps"` segfaults the
+interpreter (exit 139) rather than raising. Added a `device` option that loads
+without accelerate's dispatch and then moves.
+
+**Chance is not constant across the x-axis, and the paper does not say so.**
+Guessing a transaction at random is right 1-in-25 of the time in the shortest
+window and 1-in-500 in the longest — a 20x drop in the baseline across the
+sweep. So part of any measured decline is the guess getting harder, which is
+not what score dilution claims. Added a `txlog_random` mock arm as an empirical
+baseline; it costs nothing to run and tracks theory closely (4.5% vs 4.0% at
+window 25, 0.5% vs 0.2% at 500). Every sweep should carry it.
+
+**Thinking has a budget floor, not a gentle slope.** At a compute-matched local
+budget of T_think=1024, Qwen3-1.7B never closes `</think>`: all six timing
+records hit exactly 1024 output tokens mid-calculation, extraction correctly
+returns nothing, and the arm scores 0.00 at every window. That is budget
+starvation, not dilution.
+
+This is worth more than a note about laptops. The FLOP-matching argument in
+§3.3 treats thinking and qTTT as two ways to spend one budget, which assumes
+thinking degrades smoothly as the budget shrinks. It does not — below some
+floor it emits no answer at all, while qTTT at the same budget still produces
+one. A matched comparison at small budgets therefore flatters qTTT for a reason
+that has nothing to do with attention. Worth measuring where that floor sits
+before reading too much into any FLOP-matched number, ours or the paper's.

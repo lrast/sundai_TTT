@@ -227,3 +227,67 @@ def test_generate_before_fit_is_an_error() -> None:
     adapter = QueryOnlyTTT(_tiny_lm(), span=16, steps=1, lr=1e-3, seed=0)
     with pytest.raises(RuntimeError, match="fit"):
         adapter.generate(PROMPT)
+
+
+# --- HuggingFaceLocalModel construction --------------------------------------
+
+
+@pytest.fixture
+def saved_tiny_model(tmp_path_factory):
+    """A real checkpoint on disk, so HuggingFaceLocalModel can be constructed."""
+    from transformers import AutoTokenizer
+
+    path = tmp_path_factory.mktemp("tiny-qwen3")
+    _tiny_lm().model.save_pretrained(path)
+    AutoTokenizer.from_pretrained("Qwen/Qwen3-0.6B").save_pretrained(path)
+    return str(path)
+
+
+def test_arms_sharing_a_checkpoint_share_one_copy_of_the_weights(saved_tiny_model) -> None:
+    """The runner builds every model in a config up front. Without sharing, a
+    three-arm sweep over one checkpoint holds three copies -- 24GB for
+    Qwen3-4B in bf16, which OOMs an A100 before a single activation."""
+    from ctxlab.config import ModelConfig
+    from ctxlab.models.hf_local import HuggingFaceLocalModel, clear_weight_cache
+
+    clear_weight_cache()
+    try:
+        common = {"kind": "hf_local", "model": saved_tiny_model}
+        a = HuggingFaceLocalModel(ModelConfig(name="in_context", **common))
+        b = HuggingFaceLocalModel(ModelConfig(name="thinking", **common))
+        assert a.model is b.model
+        assert a.tokenizer is b.tokenizer
+    finally:
+        clear_weight_cache()
+
+
+def test_shared_weights_still_get_per_arm_decoding_parameters(saved_tiny_model) -> None:
+    """Sharing must not leak decoding settings between arms: the second arm is
+    built from the weight cache and would otherwise skip reading its own
+    `extra`, leaving the thinking arm decoding like the in-context one."""
+    from ctxlab.config import ModelConfig
+    from ctxlab.models.hf_local import HuggingFaceLocalModel, clear_weight_cache
+
+    clear_weight_cache()
+    try:
+        plain = HuggingFaceLocalModel(
+            ModelConfig(
+                name="in_context",
+                kind="hf_local",
+                model=saved_tiny_model,
+                extra={"enable_thinking": False, "top_p": 0.8},
+            )
+        )
+        thinking = HuggingFaceLocalModel(
+            ModelConfig(
+                name="thinking",
+                kind="hf_local",
+                model=saved_tiny_model,
+                extra={"enable_thinking": True, "top_p": 0.95, "top_k": 20},
+            )
+        )
+        assert plain.model is thinking.model
+        assert (plain.enable_thinking, plain.top_p, plain.top_k) == (False, 0.8, None)
+        assert (thinking.enable_thinking, thinking.top_p, thinking.top_k) == (True, 0.95, 20)
+    finally:
+        clear_weight_cache()

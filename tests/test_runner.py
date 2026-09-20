@@ -67,17 +67,21 @@ def test_cache_key_separates_models_that_differ_only_in_extra() -> None:
     assert keys[0] != keys[1]
 
 
-def test_cache_key_is_unchanged_for_configs_without_extra() -> None:
-    """Existing API-model runs must keep the completions they already paid for."""
+def test_cache_key_separates_models_that_differ_only_in_weights() -> None:
+    """Found the hard way: a Qwen3-1.7B gate run returned, to three decimals,
+    the numbers from a Qwen3-0.6B run. Every completion was a cache hit,
+    because only the arm's *name* was in the key and both configs called the
+    arm `in_context`. Nothing in the report showed it; only the recorded
+    `raw.model_id` gave it away."""
     from ctxlab.cache import prompt_cache_key
     from ctxlab.data.base import Message, Prompt
     from ctxlab.runner import _gen_params
 
     prompt = Prompt(system="s", messages=(Message(role="user", content="q"),))
-    cfg = ModelConfig(name="gpt-4o-mini", kind="api", model="gpt-4o-mini", max_tokens=32)
-    legacy = {"temperature": cfg.temperature, "max_tokens": cfg.max_tokens}
-    assert prompt_cache_key(prompt, cfg.name, _gen_params(cfg)) == prompt_cache_key(
-        prompt, cfg.name, legacy
+    small = ModelConfig(name="in_context", kind="hf_local", model="Qwen/Qwen3-0.6B")
+    large = ModelConfig(name="in_context", kind="hf_local", model="Qwen/Qwen3-4B")
+    assert prompt_cache_key(prompt, small.name, _gen_params(small)) != prompt_cache_key(
+        prompt, large.name, _gen_params(large)
     )
 
 

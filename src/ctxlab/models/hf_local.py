@@ -14,6 +14,28 @@ from ctxlab.data.base import Completion, Prompt
 from ctxlab.models.decoding import apply_chat, extract_answer, tail
 from ctxlab.registry import register_model
 
+# Weights are shared between arms that ask for the same checkpoint. The
+# runner builds every model in the config up front, so a three-arm sweep over
+# one checkpoint would otherwise hold three copies: 24GB for Qwen3-4B in bf16,
+# before a single activation. That OOMs an A100 on the paper's own setup.
+#
+# Safe because arms differ only in decoding parameters. The exception is the
+# TTT arm, which mutates query projections -- it restores them in a `finally`,
+# and `tests/test_qttt.py::test_restore_puts_the_base_weights_back` is what
+# keeps that true.
+_WEIGHTS: dict[tuple[str, str, str, str], tuple[Any, Any]] = {}
+
+
+def clear_weight_cache() -> None:
+    _WEIGHTS.clear()
+
+
+def _dtype_kwarg() -> str:
+    """`torch_dtype` was renamed to `dtype` in transformers 5."""
+    from transformers import __version__ as version
+
+    return "dtype" if int(version.split(".")[0]) >= 5 else "torch_dtype"
+
 
 @register_model("hf_local")
 class HuggingFaceLocalModel:
@@ -33,26 +55,41 @@ class HuggingFaceLocalModel:
         self.temperature = cfg.temperature
         self.max_tokens = cfg.max_tokens
         self.extra = dict(cfg.extra)
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
-        if self.tokenizer.pad_token_id is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self._torch = torch
+
         # Decoding knobs the paper sets per arm (Appendix D). They ride in
         # `extra` because ModelConfig has no field for them, and the runner
-        # now folds `extra` into the completion cache key so two arms that
-        # differ only here do not collide in `.cache/`.
+        # folds `extra` into the completion cache key so two arms that differ
+        # only here do not collide in `.cache/`. Set before any early return:
+        # arms sharing weights still need their own decoding parameters.
         self.enable_thinking = self.extra.pop("enable_thinking", None)
         self.top_p = self.extra.pop("top_p", None)
         self.top_k = self.extra.pop("top_k", None)
-        device_map = self.extra.pop("device_map", "auto")
+
+        # `device` loads plainly and then moves, bypassing accelerate's
+        # dispatch. That is the only path that works on Apple Silicon:
+        # `device_map="mps"` segfaults the interpreter.
+        device = self.extra.pop("device", None)
+        device_map = self.extra.pop("device_map", None if device else "auto")
         torch_dtype = self.extra.pop("torch_dtype", None)
         dtype = getattr(torch, torch_dtype) if isinstance(torch_dtype, str) else torch_dtype
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_id,
-            device_map=device_map,
-            torch_dtype=dtype,
-        )
+
+        cache_key = (self.model_id, str(dtype), str(device), str(device_map))
+        if cache_key in _WEIGHTS:
+            self.model, self.tokenizer = _WEIGHTS[cache_key]
+            return
+
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        load_kwargs: dict[str, Any] = {"device_map": device_map}
+        if dtype is not None:
+            load_kwargs[_dtype_kwarg()] = dtype
+        self.model = AutoModelForCausalLM.from_pretrained(self.model_id, **load_kwargs)
+        if device:
+            self.model = self.model.to(device)
         self.model.eval()
-        self._torch = torch
+        _WEIGHTS[cache_key] = (self.model, self.tokenizer)
 
     def generate(self, prompt: Prompt, **kwargs: Any) -> Completion:
         max_tokens = kwargs.get("max_tokens", self.max_tokens)

@@ -221,3 +221,44 @@ def test_rendered_lines_cost_what_the_paper_figure_costs() -> None:
     # transaction count rather than with anything the generator drifts into.
     density = [(counts[b] - counts[a]) / (b - a) for a, b in ((25, 95), (95, 250), (250, 500))]
     assert all(abs(d - reference) <= 4 for d in density), density
+
+
+# --- chance baseline ----------------------------------------------------------
+
+
+def _random_arm_scores(size: int, n: int = 60) -> dict[str, float]:
+    from ctxlab.config import ModelConfig
+    from ctxlab.models.mock import MockModel
+    from ctxlab.registry import get_arrangement, load_plugins
+
+    load_plugins()
+    model = MockModel(ModelConfig(name="chance", kind="mock", extra={"behavior": "txlog_random"}))
+    arrangement = get_arrangement(f"tx_window_{size}")
+    metrics = {"tx_id": TxIdAccuracy(), "tx_type": TxTypeAccuracy(), "tx_joint": TxJointAccuracy()}
+    totals = dict.fromkeys(metrics, 0.0)
+    for example in load_txlog(DatasetConfig(name="txlog", n=n, seed=1)):
+        prompt = arrangement.build(example, random.Random(example.uid))
+        text = model.generate(prompt).text
+        for name, metric in metrics.items():
+            totals[name] += metric.score(text, example.answers)
+    return {name: total / n for name, total in totals.items()}
+
+
+def test_random_arm_tracks_the_theoretical_chance_rate() -> None:
+    """The baseline has to actually be chance, or it cannot calibrate anything.
+
+    Guessing a transaction is right about 1/window of the time and a bug type
+    about 1/4, so joint accuracy is about 1/(4*window). The point of measuring
+    it is that this moves by 20x across the sweep, which means some of the
+    accuracy drop the paper reports is the guess getting harder rather than
+    attention diluting.
+    """
+    for size in (25, 95):
+        scores = _random_arm_scores(size)
+        assert scores["tx_id"] == pytest.approx(1 / size, abs=0.06)
+        assert scores["tx_type"] == pytest.approx(0.25, abs=0.15)
+        assert scores["tx_joint"] == pytest.approx(1 / (4 * size), abs=0.05)
+
+
+def test_random_arm_is_deterministic() -> None:
+    assert _random_arm_scores(25, n=20) == _random_arm_scores(25, n=20)

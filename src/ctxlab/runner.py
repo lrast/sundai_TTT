@@ -26,18 +26,25 @@ def _stable_seed(root: int, *parts: str) -> int:
 
 
 def _gen_params(cfg: ModelConfig) -> dict[str, Any]:
-    """Generation parameters, which also form part of the completion cache key.
+    """Everything that determines a completion, and therefore its cache key.
 
-    `extra` is included because that is where per-arm decoding knobs and
-    test-time-training hyperparameters live; without it two models whose only
-    difference is `top_p` (or a TTT learning rate) would share cached
-    completions. It is omitted when empty so configs that never used `extra`
-    keep the cache keys they already have.
+    One rule, no exceptions: if it changes the output, it is in here. That
+    means the weights (`model`) as well as the arm's label (`name`), because
+    two configs that reuse an arm name across model sizes would otherwise
+    share completions -- a 1.7B sweep silently replaying 4B answers, with
+    nothing in the table to show for it. `extra` is included for the same
+    reason: per-arm decoding knobs and TTT hyperparameters live there.
+
+    Adding a field invalidates `.cache/completions`, which is local and
+    gitignored. That is the right trade: a stale cache costs a re-run, a wrong
+    one costs a wrong result.
     """
-    params: dict[str, Any] = {"temperature": cfg.temperature, "max_tokens": cfg.max_tokens}
-    if cfg.extra:
-        params["extra"] = dict(cfg.extra)
-    return params
+    return {
+        "temperature": cfg.temperature,
+        "max_tokens": cfg.max_tokens,
+        "model_id": cfg.model,
+        "extra": dict(cfg.extra),
+    }
 
 
 def run_experiment(cfg: ExperimentConfig) -> Path:

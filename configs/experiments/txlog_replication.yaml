@@ -9,6 +9,11 @@
 # Change one of the three and the arms are no longer FLOP-matched, which is
 # the comparison the paper's claim rests on.
 #
+# All three arms name the same checkpoint on purpose: they share one loaded
+# copy of the weights. The runner constructs every model up front, so distinct
+# checkpoints here would mean three copies resident at once (24GB for Qwen3-4B
+# in bf16, before any activations).
+#
 # Per GPU tier, change `model` and the `arrangements` list together:
 #   >=30GB  Qwen3-4B, 25/95/250/500  -- comparable to Table 2 numerically
 #   20-30GB Qwen3-4B, same windows, optimizer: sgd (AdamW keeps two fp32
